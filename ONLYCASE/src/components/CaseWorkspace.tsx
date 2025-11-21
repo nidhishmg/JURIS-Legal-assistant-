@@ -22,7 +22,9 @@ import {
   Eye,
   Link as LinkIcon,
   Tag,
-  Activity as ActivityIcon
+  Activity as ActivityIcon,
+  Sparkles,
+  X
 } from 'lucide-react';
 import { getCaseById, CaseData } from '../data/casesData';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
@@ -31,6 +33,10 @@ import { Button } from './ui/button';
 import { Progress } from './ui/progress';
 import { Separator } from './ui/separator';
 import { Page } from '../App';
+import { getAllTemplates } from '../data/draftTemplates';
+import { generateDraftWithAI } from '../services/draftService';
+import { addDraftToCase, getDraftById } from '../services/caseService';
+import { toast } from 'sonner';
 
 interface CaseWorkspaceProps {
   caseId: string;
@@ -41,11 +47,79 @@ interface CaseWorkspaceProps {
 export function CaseWorkspace({ caseId, onNavigate, onClose }: CaseWorkspaceProps) {
   const [caseData, setCaseData] = useState<CaseData | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [selectedDraft, setSelectedDraft] = useState<any>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('');
 
   useEffect(() => {
     const data = getCaseById(caseId);
     setCaseData(data || null);
   }, [caseId]);
+
+  const refreshCaseData = () => {
+    const data = getCaseById(caseId);
+    setCaseData(data || null);
+  };
+
+  const handleGenerateDraft = async () => {
+    if (!selectedTemplate || !caseData) return;
+
+    setIsGenerating(true);
+    toast.info('Generating draft with AI...');
+
+    try {
+      const result = await generateDraftWithAI({
+        templateId: selectedTemplate,
+        caseData: {
+          title: caseData.title,
+          caseNumber: caseData.caseNumber,
+          court: caseData.court,
+          client: caseData.client,
+          opponent: caseData.opponent,
+          summary: caseData.summary,
+          facts: caseData.facts,
+          issues: caseData.issues
+        }
+      });
+
+      if (result.success && result.draftContent) {
+        const template = getAllTemplates().find(t => t.id === selectedTemplate);
+        const added = addDraftToCase(caseId, {
+          title: template?.title || selectedTemplate,
+          type: selectedTemplate,
+          content: result.draftContent
+        });
+
+        if (added) {
+          toast.success('Draft generated successfully!');
+          refreshCaseData();
+          setShowGenerateModal(false);
+          setSelectedTemplate('');
+        } else {
+          toast.error('Failed to save draft');
+        }
+      } else {
+        toast.error(result.error || 'Failed to generate draft');
+      }
+    } catch (error) {
+      console.error('Error generating draft:', error);
+      toast.error('An error occurred while generating the draft');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleViewDraft = (draft: any) => {
+    const draftData = getDraftById(caseId, draft.id);
+    if (draftData) {
+      setSelectedDraft(draftData);
+      setShowViewModal(true);
+    } else {
+      toast.error('Draft content not found');
+    }
+  };
 
   if (!caseData) {
     return (
@@ -306,16 +380,16 @@ export function CaseWorkspace({ caseId, onNavigate, onClose }: CaseWorkspaceProp
               <div className="max-w-6xl mx-auto">
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-gray-900">Case Drafts</h2>
-                  <Button>
-                    <PlusCircle className="w-4 h-4 mr-2" />
-                    Create New Draft
+                  <Button onClick={() => setShowGenerateModal(true)}>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Generate Draft with AI
                   </Button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {caseData.drafts.map((draft) => (
                     <div
                       key={draft.id}
-                      className="bg-white border border-gray-200 rounded-xl p-4 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer"
+                      className="bg-white border border-gray-200 rounded-xl p-4 hover:border-blue-300 hover:shadow-md transition-all"
                     >
                       <div className="flex items-start justify-between mb-3">
                         <FileText className="w-8 h-8 text-blue-600" />
@@ -331,21 +405,38 @@ export function CaseWorkspace({ caseId, onNavigate, onClose }: CaseWorkspaceProp
                       <p className="text-sm text-gray-600 mb-3">{draft.type}</p>
                       <div className="flex items-center justify-between text-xs text-gray-500">
                         <span>v{draft.version}</span>
-                        <span>{draft.lastEdited}</span>
+                        <span>{new Date(draft.lastEdited).toLocaleDateString('en-IN')}</span>
                       </div>
                       <Separator className="my-3" />
                       <div className="flex gap-2">
-                        <Button size="sm" variant="outline" className="flex-1">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="flex-1"
+                          onClick={() => handleViewDraft(draft)}
+                          disabled={!draft.content}
+                        >
                           <Eye className="w-3 h-3 mr-1" />
                           View
                         </Button>
                         <Button size="sm" variant="outline" className="flex-1">
-                          <Edit className="w-3 h-3 mr-1" />
-                          Edit
+                          <Download className="w-3 h-3 mr-1" />
+                          Download
                         </Button>
                       </div>
                     </div>
                   ))}
+                  {caseData.drafts.length === 0 && (
+                    <div className="col-span-full bg-gray-50 rounded-xl border-2 border-dashed border-gray-300 p-12 text-center">
+                      <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-gray-900 mb-2">No drafts yet</h3>
+                      <p className="text-gray-600 mb-4">Generate legal drafts using AI</p>
+                      <Button onClick={() => setShowGenerateModal(true)}>
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Generate First Draft
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             </TabsContent>
@@ -741,6 +832,125 @@ export function CaseWorkspace({ caseId, onNavigate, onClose }: CaseWorkspaceProp
           </div>
         </Tabs>
       </div>
+
+      {/* Generate Draft Modal */}
+      {showGenerateModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white">
+              <h2 className="text-gray-900 text-xl font-semibold">Generate Legal Draft with AI</h2>
+              <button
+                onClick={() => {
+                  setShowGenerateModal(false);
+                  setSelectedTemplate('');
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-600 mb-6">
+                Select a document template to generate using AI based on your case information.
+              </p>
+              <div className="space-y-3">
+                {getAllTemplates().map((template) => (
+                  <div
+                    key={template.id}
+                    onClick={() => setSelectedTemplate(template.id)}
+                    className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                      selectedTemplate === template.id
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <FileText className={`w-5 h-5 mt-0.5 ${
+                        selectedTemplate === template.id ? 'text-blue-600' : 'text-gray-400'
+                      }`} />
+                      <div className="flex-1">
+                        <h3 className="text-gray-900 font-medium mb-1">{template.title}</h3>
+                        <p className="text-sm text-gray-600">{template.description}</p>
+                      </div>
+                      {selectedTemplate === template.id && (
+                        <CheckCircle2 className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-200 flex gap-3 justify-end sticky bottom-0 bg-white">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowGenerateModal(false);
+                  setSelectedTemplate('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleGenerateDraft}
+                disabled={!selectedTemplate || isGenerating}
+              >
+                {isGenerating ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Generate Draft
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Draft Modal */}
+      {showViewModal && selectedDraft && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white">
+              <div>
+                <h2 className="text-gray-900 text-xl font-semibold">{selectedDraft.title}</h2>
+                <p className="text-sm text-gray-600 mt-1">Version {selectedDraft.version} • {selectedDraft.type}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowViewModal(false);
+                  setSelectedDraft(null);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-8">
+              <div className="prose prose-sm max-w-none">
+                <pre className="whitespace-pre-wrap font-serif text-gray-900 leading-relaxed">
+                  {selectedDraft.content || 'No content available'}
+                </pre>
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-200 flex gap-3 justify-end sticky bottom-0 bg-white">
+              <Button variant="outline">
+                <Edit className="w-4 h-4 mr-2" />
+                Edit Draft
+              </Button>
+              <Button>
+                <Download className="w-4 h-4 mr-2" />
+                Download PDF
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

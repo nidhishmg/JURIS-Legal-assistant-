@@ -49,6 +49,7 @@ export interface CaseData {
     author: string;
     lastEdited: string;
     status: 'Draft' | 'Review' | 'Final';
+    content?: string;
   }[];
   
   // Documents

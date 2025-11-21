@@ -347,8 +347,78 @@ function formatDraftName(draftType: string): string {
     'reply': 'Reply',
     'written-statement': 'Written Statement',
     'application': 'Application',
-    'memo-parties': 'Memorandum of Parties'
+    'memo-parties': 'Memorandum of Parties',
+    'petition': 'Petition'
   };
   
   return names[draftType] || draftType;
+}
+
+/**
+ * Add a generated draft to a case
+ */
+export function addDraftToCase(caseId: string, draftData: {
+  title: string;
+  type: string;
+  content: string;
+}): boolean {
+  try {
+    const cases = getAllCases();
+    const caseIndex = cases.findIndex(c => c.id === caseId);
+    
+    if (caseIndex === -1) return false;
+    
+    const caseData = cases[caseIndex];
+    const now = new Date().toISOString();
+    
+    // Create new draft
+    const newDraft = {
+      id: `draft-${Date.now()}`,
+      title: draftData.title,
+      type: draftData.type,
+      version: 1,
+      author: caseData.assignedTeam[0] || 'System',
+      lastEdited: now,
+      status: 'Draft' as const,
+      content: draftData.content
+    };
+    
+    // Add draft to case
+    caseData.drafts.push(newDraft);
+    caseData.metrics.totalDrafts = caseData.drafts.length;
+    
+    // Add activity
+    caseData.activity.unshift({
+      id: `activity-${Date.now()}`,
+      user: caseData.assignedTeam[0] || 'System',
+      action: 'generated',
+      target: draftData.title,
+      timestamp: 'Just now',
+      details: `Generated ${draftData.title} using AI`
+    });
+    
+    // Save updated case
+    cases[caseIndex] = caseData;
+    localStorage.setItem(CASES_STORAGE_KEY, JSON.stringify(cases));
+    
+    return true;
+  } catch (error) {
+    console.error('Error adding draft to case:', error);
+    return false;
+  }
+}
+
+/**
+ * Get a specific draft from a case
+ */
+export function getDraftById(caseId: string, draftId: string) {
+  try {
+    const caseData = getCaseById(caseId);
+    if (!caseData) return null;
+    
+    return caseData.drafts.find(d => d.id === draftId) || null;
+  } catch (error) {
+    console.error('Error getting draft:', error);
+    return null;
+  }
 }
