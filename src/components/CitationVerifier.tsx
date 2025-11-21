@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Upload, FileText, CheckCircle2, XCircle, AlertTriangle, ExternalLink, AlertCircle, FileUp, File } from 'lucide-react';
-import { verifyCitationsWithAI } from '../services/grokAI';
+import { verifyCitationsWithAI, applyCitationCorrection } from '../services/grokAI';
 import * as pdfjsLib from 'pdfjs-dist';
 import { createWorker } from 'tesseract.js';
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-// Set up PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// Set up PDF.js worker with local worker file
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 interface Citation {
   id: string;
@@ -27,6 +28,7 @@ export function CitationVerifier() {
   const [error, setError] = useState<string | null>(null);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [extractionProgress, setExtractionProgress] = useState<string>('');
+  const [correctingId, setCorrectingId] = useState<string | null>(null);
 
   const extractTextFromPDF = async (file: File): Promise<string> => {
     try {
@@ -409,6 +411,45 @@ export function CitationVerifier() {
     } else {
       // Fallback: open Indian Kanoon directly
       window.open(urls[0].url, '_blank');
+    }
+  };
+
+  const applyCorrection = async (citation: Citation) => {
+    try {
+      setCorrectingId(citation.id);
+      setError(null);
+
+      const result = await applyCitationCorrection(
+        inputText,
+        citation.original,
+        citation.corrected
+      );
+
+      if (result.success && result.correctedText) {
+        // Update the input text with the corrected version
+        setInputText(result.correctedText);
+        
+        // Update citation status to verified
+        setCitations(prevCitations => 
+          prevCitations.map(c => 
+            c.id === citation.id 
+              ? { ...c, status: 'verified' as const, note: 'Correction applied successfully' }
+              : c
+          )
+        );
+
+        // Show success message briefly
+        setExtractionProgress(`✓ Citation corrected: ${citation.original} → ${citation.corrected}`);
+        setTimeout(() => setExtractionProgress(''), 3000);
+      } else {
+        throw new Error(result.error || 'Failed to apply correction');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to apply correction';
+      setError(errorMessage);
+      console.error('Apply correction error:', err);
+    } finally {
+      setCorrectingId(null);
     }
   };
 
@@ -813,8 +854,22 @@ As held in Maneka Gandhi vs. Union of India (AIR 1978 SC 597), the right to life
                             View Judgment
                           </button>
                           {citation.status === 'incorrect' && (
-                            <button className="px-3 py-1.5 text-sm text-green-600 hover:bg-green-50 rounded-lg transition-colors">
-                              Apply Correction
+                            <button 
+                              onClick={() => applyCorrection(citation)}
+                              disabled={correctingId === citation.id}
+                              className="px-3 py-1.5 text-sm text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                            >
+                              {correctingId === citation.id ? (
+                                <>
+                                  <div className="animate-spin rounded-full h-3 w-3 border-2 border-green-600 border-t-transparent" />
+                                  Applying...
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle2 className="w-4 h-4" />
+                                  Apply Correction
+                                </>
+                              )}
                             </button>
                           )}
                         </div>

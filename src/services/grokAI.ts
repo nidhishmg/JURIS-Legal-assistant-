@@ -608,3 +608,97 @@ Return the verification results in JSON format as specified.`;
     };
   }
 }
+
+export interface ApplyCorrectionResponse {
+  success: boolean;
+  correctedText: string;
+  error?: string;
+}
+
+/**
+ * Apply citation correction to the original text using AI
+ * @param originalText - The full text containing the citation
+ * @param incorrectCitation - The incorrect citation to replace
+ * @param correctedCitation - The correct citation to use
+ * @returns Promise with the corrected text
+ */
+export async function applyCitationCorrection(
+  originalText: string,
+  incorrectCitation: string,
+  correctedCitation: string
+): Promise<ApplyCorrectionResponse> {
+  try {
+    console.log('=== Applying Citation Correction ===');
+    console.log('Original citation:', incorrectCitation);
+    console.log('Corrected citation:', correctedCitation);
+
+    if (!import.meta.env.VITE_OPENROUTER_API_KEY) {
+      return {
+        success: false,
+        correctedText: '',
+        error: 'OpenRouter API key not configured'
+      };
+    }
+
+    const client = createClient();
+    const modelName = 'openai/gpt-4o-mini';
+
+    const systemPrompt = `You are an expert legal document editor. Your task is to replace incorrect legal citations with corrected ones in legal documents while preserving the exact context and formatting of the original text.
+
+Guidelines:
+1. Replace ONLY the specified incorrect citation with the corrected version
+2. Maintain exact formatting, spacing, and structure of the original text
+3. Do not modify any other content in the document
+4. Preserve all punctuation and context around the citation
+5. Return ONLY the corrected text, without any explanations or markdown formatting`;
+
+    const userPrompt = `Replace the following incorrect citation in the text:
+
+Incorrect Citation: ${incorrectCitation}
+Corrected Citation: ${correctedCitation}
+
+Original Text:
+${originalText}
+
+Provide ONLY the corrected text with the citation replaced. Do not add any explanations, comments, or markdown formatting.`;
+
+    const completion = await client.chat.completions.create({
+      model: modelName,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 4000
+    });
+
+    const correctedText = completion.choices[0]?.message?.content?.trim();
+
+    if (!correctedText) {
+      throw new Error('No corrected text received from AI');
+    }
+
+    console.log('=== Correction Applied Successfully ===');
+
+    return {
+      success: true,
+      correctedText
+    };
+
+  } catch (error: unknown) {
+    console.error('=== Citation Correction Error ===');
+    if (error instanceof Error) {
+      console.error('Error details:', error.message);
+      return {
+        success: false,
+        correctedText: '',
+        error: error.message || 'Failed to apply correction'
+      };
+    }
+    return {
+      success: false,
+      correctedText: '',
+      error: 'Unknown error occurred during correction'
+    };
+  }
+}
