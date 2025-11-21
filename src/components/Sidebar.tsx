@@ -47,7 +47,6 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
     { id: 'new-chat' as Page, label: 'New Chat', icon: MessageSquarePlus },
     { id: 'cases' as Page, label: 'Cases', icon: FolderOpen },
     { id: 'drafts' as Page, label: 'Drafts', icon: FileText },
-    { id: 'documents' as Page, label: 'Documents', icon: Upload },
     { id: 'citation-verifier' as Page, label: 'Citation Verifier', icon: CheckCircle2 },
     { id: 'ipc-bns-converter' as Page, label: 'IPC ↔ BNS Converter', icon: GitCompare },
   ];
