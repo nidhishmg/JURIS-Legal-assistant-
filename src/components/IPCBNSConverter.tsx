@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Search, ArrowRight, BookOpen, Scale, AlertCircle } from 'lucide-react';
+import { Search, ArrowRight, BookOpen, Scale, AlertCircle, Loader2 } from 'lucide-react';
+import { convertIPCBNSWithAI } from '../services/grokAI';
 
 interface ConversionResult {
   ipc: {
@@ -22,89 +23,43 @@ export function IPCBNSConverter() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchType, setSearchType] = useState<'ipc' | 'bns'>('ipc');
   const [result, setResult] = useState<ConversionResult | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string>('');
 
-  const mockData: Record<string, ConversionResult> = {
-    '420': {
-      ipc: {
-        section: 'Section 420',
-        title: 'Cheating and dishonestly inducing delivery of property',
-        description: 'Whoever cheats and thereby dishonestly induces the person deceived to deliver any property to any person, or to make, alter or destroy the whole or any part of a valuable security, or anything which is signed or sealed, and which is capable of being converted into a valuable security, shall be punished with imprisonment of either description for a term which may extend to seven years, and shall also be liable to fine.',
-        punishment: 'Imprisonment up to 7 years and fine'
-      },
-      bns: {
-        section: 'Section 318',
-        title: 'Cheating and dishonestly inducing delivery of property',
-        description: 'Whoever cheats and thereby dishonestly induces the person deceived to deliver any property to any person, or to make, alter or destroy the whole or any part of a valuable security, or anything which is signed or sealed, and which is capable of being converted into a valuable security, shall be punished with imprisonment of either description for a term which may extend to seven years, and shall also be liable to fine.',
-        punishment: 'Imprisonment up to 7 years and fine'
-      },
-      changes: [
-        'Section number changed from 420 to 318',
-        'No substantial changes in definition or punishment',
-        'Language and structure modernized for clarity'
-      ],
-      caseReferences: [
-        { title: 'State vs. Kumar', citation: '2024 SCC 123' },
-        { title: 'R. Balakrishna Pillai vs. State of Kerala', citation: 'AIR 1996 SC 901' }
-      ]
-    },
-    '302': {
-      ipc: {
-        section: 'Section 302',
-        title: 'Punishment for murder',
-        description: 'Whoever commits murder shall be punished with death, or imprisonment for life, and shall also be liable to fine.',
-        punishment: 'Death or Life imprisonment and fine'
-      },
-      bns: {
-        section: 'Section 103',
-        title: 'Punishment for murder',
-        description: 'Whoever commits murder shall be punished with death, or imprisonment for life, and shall also be liable to fine.',
-        punishment: 'Death or Life imprisonment and fine'
-      },
-      changes: [
-        'Section number changed from 302 to 103',
-        'No changes in definition or quantum of punishment',
-        'Provision remains substantially the same'
-      ],
-      caseReferences: [
-        { title: 'Bachan Singh vs. State of Punjab', citation: 'AIR 1980 SC 898' },
-        { title: 'Machhi Singh vs. State of Punjab', citation: 'AIR 1983 SC 957' }
-      ]
-    },
-    '376': {
-      ipc: {
-        section: 'Section 376',
-        title: 'Punishment for rape',
-        description: 'Whoever commits rape shall be punished with rigorous imprisonment for a term which shall not be less than ten years but which may extend to imprisonment for life, and shall also be liable to fine.',
-        punishment: 'Rigorous imprisonment 10 years to life and fine'
-      },
-      bns: {
-        section: 'Section 63',
-        title: 'Punishment for rape',
-        description: 'Whoever commits rape shall be punished with rigorous imprisonment for a term which shall not be less than ten years but which may extend to imprisonment for life, and shall also be liable to fine.',
-        punishment: 'Rigorous imprisonment 10 years to life and fine'
-      },
-      changes: [
-        'Section number changed from 376 to 63',
-        'Core provisions remain unchanged',
-        'Enhanced procedural safeguards added in related sections'
-      ],
-      caseReferences: [
-        { title: 'State of Punjab vs. Gurmit Singh', citation: 'AIR 1996 SC 1393' },
-        { title: 'Vishaka vs. State of Rajasthan', citation: 'AIR 1997 SC 3011' }
-      ]
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) {
+      setError('Please enter a section number');
+      return;
     }
-  };
 
-  const handleSearch = () => {
-    // Extract section number from query
-    const sectionMatch = searchQuery.match(/\d+/);
-    if (sectionMatch) {
-      const section = sectionMatch[0];
-      if (mockData[section]) {
-        setResult(mockData[section]);
-      } else {
-        setResult(null);
+    setIsLoading(true);
+    setError('');
+    setResult(null);
+
+    try {
+      // Extract section number from query
+      const sectionMatch = searchQuery.match(/\d+[A-Za-z]*/);
+      if (!sectionMatch) {
+        setError('Invalid section format. Please enter a valid section number (e.g., 420, 498A)');
+        setIsLoading(false);
+        return;
       }
+
+      const section = sectionMatch[0];
+      
+      // Call AI service
+      const response = await convertIPCBNSWithAI(section, searchType);
+
+      if (response.success && response.result) {
+        setResult(response.result);
+      } else {
+        setError(response.error || 'Failed to convert section. Please try again.');
+      }
+    } catch (err) {
+      console.error('Conversion error:', err);
+      setError('An unexpected error occurred. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -139,6 +94,22 @@ export function IPCBNSConverter() {
             </p>
           </div>
         </div>
+
+        {/* Error Alert */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm text-red-800">{error}</p>
+            </div>
+            <button
+              onClick={() => setError('')}
+              className="text-red-600 hover:text-red-700 text-xl leading-none"
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         {/* Search Section */}
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
@@ -182,9 +153,17 @@ export function IPCBNSConverter() {
             </div>
             <button
               onClick={handleSearch}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              disabled={isLoading}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              Convert
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Converting...
+                </>
+              ) : (
+                'Convert'
+              )}
             </button>
           </div>
         </div>
@@ -199,8 +178,9 @@ export function IPCBNSConverter() {
                 onClick={() => {
                   setSearchQuery(section.ipc);
                   setSearchType('ipc');
-                  setTimeout(() => handleSearch(), 100);
+                  setTimeout(() => handleSearch(), 50);
                 }}
+                disabled={isLoading}
                 className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-sm transition-all text-left"
               >
                 <div className="flex items-center justify-between mb-2">

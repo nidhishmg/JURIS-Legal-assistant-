@@ -1,101 +1,140 @@
 import { useState } from 'react';
-import { Upload, FileText, Download, Bookmark, Clock, User, Gavel } from 'lucide-react';
+import { Upload, FileText, Clock, Gavel, Scale, BookOpen, ChevronLeft, AlertCircle } from 'lucide-react';
+import { analyzeJudgmentWithAI } from '../services/grokAI';
 
-interface Analysis {
-  title: string;
-  citation: string;
-  court: string;
+interface CaseTimelineItem {
   date: string;
-  bench: string;
-  facts: string;
-  issues: string[];
-  timeline: Array<{ date: string; event: string }>;
+  event: string;
+}
+
+interface JudgmentAnalysis {
+  caseTimeline: CaseTimelineItem[];
+  sectionsInvolved: string[];
   arguments: {
     petitioner: string;
     respondent: string;
   };
-  ratio: string;
-  decision: string;
+  ratioDecidendi: string[];
+  obiterDicta: string[];
+  plainLanguageSummary: string;
 }
 
 export function JudgmentAnalyzer() {
   const [file, setFile] = useState<File | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [analysis, setAnalysis] = useState<JudgmentAnalysis | null>(null);
+  const [error, setError] = useState<string>('');
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const uploadedFile = e.target.files?.[0];
     if (uploadedFile) {
       setFile(uploadedFile);
+      setError('');
+      setAnalysis(null);
     }
   };
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     if (!file) return;
 
     setIsAnalyzing(true);
+    setError('');
 
-    // Simulate analysis
-    setTimeout(() => {
-      const mockAnalysis: Analysis = {
-        title: 'State of Punjab vs. Baldev Singh',
-        citation: '2024 SCC OnLine SC 1234',
-        court: 'Supreme Court of India',
-        date: '2024-10-15',
-        bench: 'CJI D.Y. Chandrachud, Justice Sanjiv Khanna, Justice B.R. Gavai',
-        facts: `The appellant was arrested under Sections 302, 307 IPC and relevant sections of the Arms Act. The prosecution case was that on the fateful day, the accused persons had a dispute with the deceased over property matters. The incident occurred at around 8 PM when the accused allegedly opened fire resulting in the death of one person and injuries to two others. The trial court convicted the accused and sentenced him to life imprisonment. The High Court upheld the conviction. Hence, the present appeal.`,
-        issues: [
-          'Whether the prosecution has proved the case beyond reasonable doubt?',
-          'Whether the conviction and sentence awarded by the trial court are justified?',
-          'Whether the appellant is entitled to bail pending appeal?',
-          'Whether the evidence of eyewitnesses is reliable?'
-        ],
-        timeline: [
-          { date: '2023-01-15', event: 'Incident occurred - FIR registered' },
-          { date: '2023-01-16', event: 'Accused arrested' },
-          { date: '2023-02-20', event: 'Chargesheet filed' },
-          { date: '2023-03-10', event: 'Trial commenced' },
-          { date: '2023-12-15', event: 'Trial court judgment - convicted' },
-          { date: '2024-06-20', event: 'High Court appeal dismissed' },
-          { date: '2024-10-15', event: 'Supreme Court judgment' }
-        ],
-        arguments: {
-          petitioner: `The learned counsel for the appellant contended that the prosecution case is based on circumstantial evidence and the same is not sufficient to prove guilt beyond reasonable doubt. It was argued that there are material contradictions in the statements of eyewitnesses. The defence witnesses were not properly examined. The motive attributed to the appellant is not established. The investigating officer failed to collect crucial evidence from the scene of crime. The conviction is based on surmises and conjectures.`,
-          respondent: `The learned counsel for the State argued that the prosecution has established its case through reliable eyewitness testimony. The medical evidence corroborates the prosecution case. The recovery of weapon from the possession of the accused is a strong circumstance. The motive is clearly established through evidence on record. Minor contradictions in witness statements do not affect the core of the prosecution case. The trial court and High Court have rightly appreciated the evidence.`
-        },
-        ratio: `The Supreme Court held that in cases based on circumstantial evidence, each circumstance must be proved beyond reasonable doubt and the chain of circumstances must be complete. The Court observed that eyewitness testimony must be scrutinized carefully, especially when there are material contradictions. The Court held that the benefit of doubt must be given to the accused when the prosecution fails to prove its case beyond reasonable doubt. The right to fair trial is a fundamental right under Article 21 of the Constitution.`,
-        decision: `After careful consideration of the evidence on record and hearing the learned counsels, the Court found that the prosecution has failed to establish the guilt of the appellant beyond reasonable doubt. There are material contradictions in the testimony of eyewitnesses which have not been satisfactorily explained. The recovery of weapon is not properly proved as per legal requirements. In view of the above, the appeal is allowed. The conviction and sentence are set aside. The appellant is directed to be released forthwith if not required in any other case.`
-      };
+    try {
+      // Extract text from PDF
+      const text = await extractTextFromPDF(file);
+      
+      if (!text || text.trim().length < 100) {
+        setError('Could not extract sufficient text from the PDF. Please ensure the file is a valid text-based PDF.');
+        setIsAnalyzing(false);
+        return;
+      }
 
-      setAnalysis(mockAnalysis);
+      // Call AI to analyze
+      const result = await analyzeJudgmentWithAI(text);
+
+      if (result.success && result.analysis) {
+        setAnalysis(result.analysis);
+      } else {
+        setError(result.error || 'Failed to analyze judgment. Please try again.');
+      }
+    } catch (err) {
+      console.error('Analysis error:', err);
+      setError('An unexpected error occurred during analysis. Please try again.');
+    } finally {
       setIsAnalyzing(false);
-    }, 3000);
+    }
+  };
+
+  // Helper function to extract text from PDF
+  const extractTextFromPDF = async (file: File): Promise<string> => {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      // Simple text extraction - convert PDF bytes to text
+      // For production, you'd use a proper PDF library like pdf.js
+      const text = new TextDecoder('utf-8').decode(uint8Array);
+      
+      // Extract readable text (basic approach)
+      const cleanText = text
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '') // Remove control characters
+        .replace(/\s+/g, ' ') // Normalize whitespace
+        .trim();
+      
+      return cleanText;
+    } catch (error) {
+      console.error('PDF extraction error:', error);
+      throw new Error('Failed to extract text from PDF');
+    }
   };
 
   return (
     <div className="h-full overflow-y-auto bg-gray-50">
       <div className="max-w-6xl mx-auto p-6">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-gray-900 mb-2">Judgment Analyzer</h1>
-          <p className="text-gray-600">
-            Upload and analyze court judgments - extract key points, ratios, and summaries
-          </p>
+        <div className="mb-6 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center">
+            <Gavel className="w-5 h-5 text-blue-700" />
+          </div>
+          <div>
+            <h1 className="text-gray-900 mb-1">Judgment Analyzer</h1>
+            <p className="text-gray-600 text-sm">
+              Upload a long judgment and get a clean, structured breakdown: timeline, sections, arguments, ratio vs obiter, and a
+              plain-language summary.
+            </p>
+          </div>
         </div>
 
         {!analysis ? (
-          /* Upload Section */
           <div className="bg-white rounded-xl border border-gray-200 p-8">
             <div className="max-w-2xl mx-auto">
+              {/* Error Alert */}
+              {error && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm text-red-800">{error}</p>
+                  </div>
+                  <button
+                    onClick={() => setError('')}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+
               {/* Upload Area */}
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:border-blue-400 transition-colors">
                 <div className="flex flex-col items-center">
                   <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
                     <Upload className="w-8 h-8 text-blue-600" />
                   </div>
-                  <h3 className="text-gray-900 mb-2">Upload Judgment Document</h3>
+                  <h3 className="text-gray-900 mb-2">Upload Judgment PDF</h3>
                   <p className="text-sm text-gray-600 mb-4">
-                    Supports PDF, DOC, DOCX files up to 10MB
+                    Upload a single judgment (PDF/DOC/DOCX, up to 10MB). The AI will read the full text and return only the 5 key
+                    views you care about.
                   </p>
                   <label className="cursor-pointer">
                     <span className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 inline-block">
@@ -144,8 +183,8 @@ export function JudgmentAnalyzer() {
                   >
                     {isAnalyzing ? (
                       <>
-                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        Analyzing Judgment...
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Analyzing Judgment with AI...
                       </>
                     ) : (
                       'Analyze Judgment'
@@ -155,185 +194,141 @@ export function JudgmentAnalyzer() {
               )}
 
               {/* Features */}
-              <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                 <div className="flex gap-3">
-                  <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <FileText className="w-4 h-4 text-green-600" />
+                  <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <Clock className="w-4 h-4 text-orange-700" />
                   </div>
                   <div>
-                    <h4 className="text-sm text-gray-900 mb-1">Extract Facts</h4>
-                    <p className="text-xs text-gray-600">
-                      Automatically identify case facts and background
-                    </p>
+                    <h4 className="text-gray-900 mb-1">Case Timeline</h4>
+                    <p className="text-xs text-gray-600">Clear chronological steps from FIR to final judgment.</p>
                   </div>
                 </div>
                 <div className="flex gap-3">
                   <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Gavel className="w-4 h-4 text-purple-600" />
+                    <Scale className="w-4 h-4 text-purple-700" />
                   </div>
                   <div>
-                    <h4 className="text-sm text-gray-900 mb-1">Identify Ratio</h4>
-                    <p className="text-xs text-gray-600">
-                      Extract ratio decidendi and legal principles
-                    </p>
+                    <h4 className="text-gray-900 mb-1">Sections & Ratio</h4>
+                    <p className="text-xs text-gray-600">Highlights IPC/BNS, Evidence Act etc. and separates ratio from obiter.</p>
                   </div>
                 </div>
                 <div className="flex gap-3">
-                  <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Clock className="w-4 h-4 text-orange-600" />
+                  <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <BookOpen className="w-4 h-4 text-green-700" />
                   </div>
                   <div>
-                    <h4 className="text-sm text-gray-900 mb-1">Timeline View</h4>
-                    <p className="text-xs text-gray-600">
-                      Visualize case chronology and key events
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <User className="w-4 h-4 text-blue-600" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm text-gray-900 mb-1">Arguments Analysis</h4>
-                    <p className="text-xs text-gray-600">
-                      Summarize arguments from both parties
-                    </p>
+                    <h4 className="text-gray-900 mb-1">Plain-Language Summary</h4>
+                    <p className="text-xs text-gray-600">Explains the judgment in simple, non-technical language.</p>
                   </div>
                 </div>
               </div>
             </div>
           </div>
         ) : (
-          /* Analysis Results */
           <div className="space-y-6">
-            {/* Header Card */}
-            <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <h2 className="text-gray-900 mb-2">{analysis.title}</h2>
-                  <p className="text-gray-600 mb-4">{analysis.citation}</p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <p className="text-sm text-gray-500">Court</p>
-                      <p className="text-gray-900">{analysis.court}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Date of Judgment</p>
-                      <p className="text-gray-900">
-                        {new Date(analysis.date).toLocaleDateString('en-IN', {
-                          day: 'numeric',
-                          month: 'long',
-                          year: 'numeric'
-                        })}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Bench</p>
-                      <p className="text-gray-900">{analysis.bench}</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50">
-                    <Bookmark className="w-5 h-5 text-gray-600" />
-                  </button>
-                  <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
-                    <Download className="w-4 h-4" />
-                    Export
-                  </button>
-                </div>
+            {/* Overview / Back */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5 flex items-center justify-between">
+              <div>
+                <h2 className="text-gray-900 mb-1">Judgment Breakdown</h2>
+                <p className="text-gray-600 text-sm">
+                  Generated from your uploaded judgment. Structured into: Case Timeline, Sections Involved, Arguments, Ratio vs
+                  Obiter, and a Plain-Language Summary.
+                </p>
               </div>
+              <button
+                onClick={() => setAnalysis(null)}
+                className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1 text-sm"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Analyze another
+              </button>
             </div>
 
-            {/* Facts */}
+            {/* 1. Case Timeline */}
             <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <h3 className="text-gray-900 mb-3">Facts of the Case</h3>
-              <p className="text-gray-700 leading-relaxed">{analysis.facts}</p>
-            </div>
-
-            {/* Issues */}
-            <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <h3 className="text-gray-900 mb-3">Issues Raised</h3>
-              <ol className="list-decimal list-inside space-y-2">
-                {analysis.issues.map((issue, index) => (
-                  <li key={index} className="text-gray-700">{issue}</li>
+              <div className="flex items-center gap-2 mb-3">
+                <Clock className="w-4 h-4 text-orange-600" />
+                <h3 className="text-gray-900">1. Case Timeline (Chronology)</h3>
+              </div>
+              <ol className="space-y-2 text-sm">
+                {analysis.caseTimeline.map((step, idx) => (
+                  <li key={idx} className="flex gap-3">
+                    <span className="w-28 text-gray-500 text-xs md:text-sm">
+                      {step.date}
+                    </span>
+                    <span className="text-gray-800 flex-1">{step.event}</span>
+                  </li>
                 ))}
               </ol>
             </div>
 
-            {/* Timeline */}
+            {/* 2. Sections Involved */}
             <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <h3 className="text-gray-900 mb-4">Case Timeline</h3>
-              <div className="relative">
-                {analysis.timeline.map((event, index) => (
-                  <div key={index} className="flex gap-4 mb-6 last:mb-0">
-                    <div className="relative">
-                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                        <Clock className="w-5 h-5 text-blue-600" />
-                      </div>
-                      {index < analysis.timeline.length - 1 && (
-                        <div className="absolute left-5 top-10 bottom-0 w-0.5 bg-gray-200 -mb-6"></div>
-                      )}
-                    </div>
-                    <div className="flex-1 pt-1">
-                      <p className="text-sm text-gray-500 mb-1">
-                        {new Date(event.date).toLocaleDateString('en-IN', {
-                          day: 'numeric',
-                          month: 'long',
-                          year: 'numeric'
-                        })}
-                      </p>
-                      <p className="text-gray-900">{event.event}</p>
-                    </div>
-                  </div>
+              <div className="flex items-center gap-2 mb-3">
+                <Scale className="w-4 h-4 text-purple-700" />
+                <h3 className="text-gray-900">2. Sections Involved (IPC/BNS, Evidence Act, CPC etc.)</h3>
+              </div>
+              <ul className="list-disc list-inside space-y-1 text-sm text-gray-800">
+                {analysis.sectionsInvolved.map((sec, idx) => (
+                  <li key={idx}>{sec}</li>
                 ))}
-              </div>
+              </ul>
             </div>
 
-            {/* Arguments */}
+            {/* 3. Arguments – Petitioner vs Respondent */}
             <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <h3 className="text-gray-900 mb-4">Arguments</h3>
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-gray-900 mb-2">Petitioner's Arguments</h4>
-                  <p className="text-gray-700 leading-relaxed">{analysis.arguments.petitioner}</p>
+              <div className="flex items-center gap-2 mb-3">
+                <FileText className="w-4 h-4 text-blue-700" />
+                <h3 className="text-gray-900">3. Arguments – Petitioner vs Respondent</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div className="border border-blue-100 rounded-lg p-4 bg-blue-50/40">
+                  <h4 className="text-xs font-semibold text-blue-800 mb-2 uppercase tracking-wide">Petitioner / Appellant</h4>
+                  <p className="text-gray-800 whitespace-pre-line">{analysis.arguments.petitioner}</p>
                 </div>
-                <div>
-                  <h4 className="text-gray-900 mb-2">Respondent's Arguments</h4>
-                  <p className="text-gray-700 leading-relaxed">{analysis.arguments.respondent}</p>
+                <div className="border border-emerald-100 rounded-lg p-4 bg-emerald-50/40">
+                  <h4 className="text-xs font-semibold text-emerald-800 mb-2 uppercase tracking-wide">Respondent / State</h4>
+                  <p className="text-gray-800 whitespace-pre-line">{analysis.arguments.respondent}</p>
                 </div>
               </div>
             </div>
 
-            {/* Ratio Decidendi */}
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
-              <h3 className="text-gray-900 mb-3">Ratio Decidendi (Legal Principle)</h3>
-              <p className="text-gray-700 leading-relaxed">{analysis.ratio}</p>
+            {/* 4. Ratio Decidendi vs Obiter Dicta */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="flex items-center gap-2 mb-3">
+                <Gavel className="w-4 h-4 text-red-700" />
+                <h3 className="text-gray-900">4. Ratio Decidendi vs Obiter Dicta</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+                <div>
+                  <h4 className="text-xs font-semibold text-red-800 mb-2 uppercase tracking-wide">Ratio Decidendi (Core Principle)</h4>
+                  <ul className="list-disc list-inside space-y-1 text-gray-800">
+                    {analysis.ratioDecidendi.map((point, idx) => (
+                      <li key={idx}>{point}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <h4 className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">Obiter Dicta (Additional Observations)</h4>
+                  <ul className="list-disc list-inside space-y-1 text-gray-800">
+                    {analysis.obiterDicta.map((point, idx) => (
+                      <li key={idx}>{point}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
             </div>
 
-            {/* Final Decision */}
-            <div className="bg-green-50 border border-green-200 rounded-xl p-6">
-              <h3 className="text-gray-900 mb-3">Final Decision</h3>
-              <p className="text-gray-700 leading-relaxed">{analysis.decision}</p>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex gap-3">
-              <button className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                Attach to Case
-              </button>
-              <button className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
-                Save Summary
-              </button>
-              <button
-                onClick={() => {
-                  setAnalysis(null);
-                  setFile(null);
-                }}
-                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-              >
-                Analyze Another
-              </button>
+            {/* 5. Plain-Language Summary */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="flex items-center gap-2 mb-3">
+                <BookOpen className="w-4 h-4 text-green-700" />
+                <h3 className="text-gray-900">5. Plain-Language Summary</h3>
+              </div>
+              <div className="prose prose-sm max-w-none text-gray-800 whitespace-pre-line">
+                {analysis.plainLanguageSummary}
+              </div>
             </div>
           </div>
         )}
