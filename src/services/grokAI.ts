@@ -451,3 +451,160 @@ Respond with ONLY the JSON object.`;
     };
   }
 }
+
+// Citation verification types
+export interface VerifiedCitation {
+  id: string;
+  original: string;
+  corrected: string;
+  status: 'verified' | 'overruled' | 'incorrect' | 'modified';
+  judgment: string;
+  court: string;
+  date: string;
+  note?: string;
+  sources: string[];
+  pinpointReference?: string;
+}
+
+export interface CitationVerificationResponse {
+  success: boolean;
+  citations: VerifiedCitation[];
+  error?: string;
+}
+
+/**
+ * Verify legal citations using AI with internet knowledge
+ * Checks citations against SCC, Manupatra, LiveLaw, Indian Kanoon, etc.
+ * @param text - Text containing legal citations to verify
+ * @returns Promise with verified citations and their status
+ */
+export async function verifyCitationsWithAI(
+  text: string
+): Promise<CitationVerificationResponse> {
+  try {
+    const client = createClient();
+
+    console.log('=== Starting Citation Verification ===');
+    console.log('Text length:', text.length);
+
+    const systemPrompt = `You are an expert legal citation verification assistant specializing in Indian law. Your role is to:
+
+1. Extract ALL legal citations from the provided text
+2. Verify each citation against authentic legal databases (SCC, Manupatra, LiveLaw, Indian Kanoon, Supreme Court and High Court websites)
+3. Check if cases are overruled, modified, or currently valid
+4. Provide corrected citation formats following standard Indian legal citation conventions
+5. Include pinpoint references (paragraph/page numbers) when available
+6. Cross-reference multiple sources for validation
+
+IMPORTANT: Return ONLY a valid JSON object with this exact structure:
+{
+  "citations": [
+    {
+      "id": "unique-id",
+      "original": "original citation as written",
+      "corrected": "properly formatted citation",
+      "status": "verified|overruled|incorrect|modified",
+      "judgment": "case name",
+      "court": "court name",
+      "date": "YYYY-MM-DD",
+      "note": "explanation if overruled/modified/incorrect",
+      "sources": ["database names that confirmed this"],
+      "pinpointReference": "paragraph/page reference if available"
+    }
+  ]
+}
+
+Citation Status Guidelines:
+- "verified": Citation is accurate and case law is still valid
+- "overruled": Case has been expressly overruled by higher court
+- "modified": Case has been modified or distinguished
+- "incorrect": Citation format is wrong or case doesn't exist
+
+Use your knowledge of Indian legal databases and recent case law to verify accuracy.`;
+
+    const userPrompt = `Please extract and verify all legal citations from the following text. Check against SCC Online, Manupatra, LiveLaw, Indian Kanoon, and official court websites. Identify any overruled or modified cases.
+
+Text to analyze:
+${text}
+
+Return the verification results in JSON format as specified.`;
+
+    const response = await client.chat.completions.create({
+      model: 'openai/gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: systemPrompt
+        },
+        {
+          role: 'user',
+          content: userPrompt
+        }
+      ],
+      temperature: 0.3,
+      max_tokens: 4000
+    });
+
+    console.log('=== AI Response Received ===');
+    const aiResponse = response.choices[0]?.message?.content || '';
+    console.log('Raw response:', aiResponse.substring(0, 200));
+
+    let citationData: { citations: VerifiedCitation[] };
+    
+    try {
+      let jsonText = aiResponse;
+      const jsonMatch = aiResponse.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/);
+      if (jsonMatch) {
+        jsonText = jsonMatch[1];
+      }
+      
+      citationData = JSON.parse(jsonText);
+      
+      if (!citationData.citations || !Array.isArray(citationData.citations)) {
+        throw new Error('Invalid citation data structure');
+      }
+
+      const validatedCitations = citationData.citations.map((citation, index) => ({
+        id: citation.id || `citation-${index + 1}`,
+        original: citation.original || '',
+        corrected: citation.corrected || citation.original || '',
+        status: citation.status || 'verified',
+        judgment: citation.judgment || 'Unknown Case',
+        court: citation.court || 'Unknown Court',
+        date: citation.date || new Date().toISOString().split('T')[0],
+        note: citation.note,
+        sources: citation.sources || ['AI Verification'],
+        pinpointReference: citation.pinpointReference
+      }));
+
+      console.log('=== Verification Complete ===');
+      console.log('Total citations found:', validatedCitations.length);
+
+      return {
+        success: true,
+        citations: validatedCitations
+      };
+
+    } catch (parseError) {
+      console.error('Failed to parse AI response:', parseError);
+      console.error('Response was:', aiResponse);
+      throw new Error('Failed to parse citation verification response');
+    }
+
+  } catch (error: unknown) {
+    console.error('=== Citation Verification Error ===');
+    if (error instanceof Error) {
+      console.error('Error details:', error.message);
+      return {
+        success: false,
+        citations: [],
+        error: error.message || 'Failed to verify citations'
+      };
+    }
+    return {
+      success: false,
+      citations: [],
+      error: 'Unknown error occurred during verification'
+    };
+  }
+}

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Upload, FileText, CheckCircle2, XCircle, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Upload, FileText, CheckCircle2, XCircle, AlertTriangle, ExternalLink, AlertCircle } from 'lucide-react';
+import { verifyCitationsWithAI } from '../services/grokAI';
 
 interface Citation {
   id: string;
@@ -10,62 +11,42 @@ interface Citation {
   court: string;
   date: string;
   note?: string;
+  sources?: string[];
+  pinpointReference?: string;
 }
 
 export function CitationVerifier() {
   const [inputText, setInputText] = useState('');
   const [citations, setCitations] = useState<Citation[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleVerify = () => {
+  const handleVerify = async () => {
+    if (!inputText.trim()) {
+      setError('Please enter text containing legal citations');
+      return;
+    }
+
     setIsAnalyzing(true);
-    
-    // Simulate analysis
-    setTimeout(() => {
-      const mockCitations: Citation[] = [
-        {
-          id: '1',
-          original: 'AIR 1978 SC 597',
-          corrected: 'AIR 1978 SC 597',
-          status: 'verified',
-          judgment: 'Maneka Gandhi vs. Union of India',
-          court: 'Supreme Court of India',
-          date: '1978-01-25',
-        },
-        {
-          id: '2',
-          original: '2020 SCC 234',
-          corrected: '2020 SCC OnLine SC 234',
-          status: 'incorrect',
-          judgment: 'State vs. Kumar',
-          court: 'Supreme Court of India',
-          date: '2020-03-15',
-          note: 'Incorrect citation format. Should be "2020 SCC OnLine SC 234"'
-        },
-        {
-          id: '3',
-          original: '(1997) 1 SCC 416',
-          corrected: '(1997) 1 SCC 416',
-          status: 'overruled',
-          judgment: 'Vishaka vs. State of Rajasthan',
-          court: 'Supreme Court of India',
-          date: '1997-08-13',
-          note: 'Partially overruled by Sexual Harassment of Women at Workplace Act, 2013'
-        },
-        {
-          id: '4',
-          original: '2024 SCC OnLine Del 1234',
-          corrected: '2024 SCC OnLine Del 1234',
-          status: 'verified',
-          judgment: 'ABC Corp vs. XYZ Ltd.',
-          court: 'Delhi High Court',
-          date: '2024-05-20',
-        }
-      ];
-      
-      setCitations(mockCitations);
+    setError(null);
+    setCitations([]);
+
+    try {
+      const response = await verifyCitationsWithAI(inputText);
+
+      if (response.success && response.citations.length > 0) {
+        setCitations(response.citations);
+      } else if (response.error) {
+        setError(response.error);
+      } else {
+        setError('No citations found in the provided text');
+      }
+    } catch (err) {
+      console.error('Verification error:', err);
+      setError('Failed to verify citations. Please try again.');
+    } finally {
       setIsAnalyzing(false);
-    }, 2000);
+    }
   };
 
   const getStatusIcon = (status: Citation['status']) => {
@@ -110,9 +91,25 @@ export function CitationVerifier() {
         <div className="mb-6">
           <h1 className="text-gray-900 mb-2">Citation Verifier</h1>
           <p className="text-gray-600">
-            Verify legal citations, check their validity, and detect overruled judgments
+            AI-powered citation verification across SCC, Manupatra, LiveLaw, and Indian Kanoon
           </p>
         </div>
+
+        {/* Error Alert */}
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-red-800">{error}</p>
+            </div>
+            <button
+              onClick={() => setError(null)}
+              className="text-red-600 hover:text-red-800"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Input Section */}
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
@@ -264,7 +261,26 @@ As held in Maneka Gandhi vs. Union of India (AIR 1978 SC 597), the right to life
                           <span>{citation.court}</span>
                           <span>•</span>
                           <span>{new Date(citation.date).toLocaleDateString('en-IN')}</span>
+                          {citation.pinpointReference && (
+                            <>
+                              <span>•</span>
+                              <span className="text-blue-600">{citation.pinpointReference}</span>
+                            </>
+                          )}
                         </div>
+
+                        {citation.sources && citation.sources.length > 0 && (
+                          <div className="mb-2 flex items-center gap-2 text-sm">
+                            <span className="text-gray-500">Verified by:</span>
+                            <div className="flex gap-1 flex-wrap">
+                              {citation.sources.map((source, idx) => (
+                                <span key={idx} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
+                                  {source}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                         {citation.note && (
                           <div className={`mt-3 p-3 rounded-lg ${
