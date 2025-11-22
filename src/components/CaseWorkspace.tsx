@@ -913,39 +913,110 @@ export function CaseWorkspace({ caseId, onNavigate, onClose }: CaseWorkspaceProp
 
       {/* View Draft Modal */}
       {showViewModal && selectedDraft && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white">
-              <div>
-                <h2 className="text-gray-900 text-xl font-semibold">{selectedDraft.title}</h2>
-                <p className="text-sm text-gray-600 mt-1">Version {selectedDraft.version} • {selectedDraft.type}</p>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="px-8 py-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-gray-50 to-white rounded-t-2xl">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-primary-100 rounded-xl">
+                  <FileText className="w-6 h-6 text-primary-600" />
+                </div>
+                <div>
+                  <h2 className="text-gray-900 text-2xl font-semibold">{selectedDraft.title}</h2>
+                  <div className="flex items-center gap-3 mt-1">
+                    <span className="px-2.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
+                      Version {selectedDraft.version}
+                    </span>
+                    <span className="text-sm text-gray-500">•</span>
+                    <span className="text-sm text-gray-600">{selectedDraft.type}</span>
+                    <span className="text-sm text-gray-500">•</span>
+                    <span className="text-sm text-gray-600">Last edited: {selectedDraft.lastEdited}</span>
+                  </div>
+                </div>
               </div>
               <button
                 onClick={() => {
                   setShowViewModal(false);
                   setSelectedDraft(null);
                 }}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2.5 hover:bg-gray-100 rounded-xl transition-all hover:rotate-90 duration-300"
               >
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
-            <div className="p-8">
-              <div className="prose prose-sm max-w-none">
-                <pre className="whitespace-pre-wrap font-serif text-gray-900 leading-relaxed">
-                  {selectedDraft.content || 'No content available'}
-                </pre>
+
+            {/* Document Content */}
+            <div className="flex-1 overflow-y-auto bg-gray-50">
+              <div className="max-w-4xl mx-auto p-12">
+                {/* A4 Paper-like Container */}
+                <div className="bg-white shadow-lg rounded-lg p-16 min-h-[297mm]" style={{ fontFamily: 'Times New Roman, serif' }}>
+                  <div className="space-y-6 text-gray-900 leading-loose text-base">
+                    {selectedDraft.content ? (
+                      selectedDraft.content.split('\n').map((line, idx) => {
+                        // Remove markdown formatting (**, *, _, etc.)
+                        let cleanLine = line.replace(/\*\*/g, '').replace(/\*/g, '').replace(/__/g, '').replace(/_/g, '');
+                        
+                        // Check if line is a heading (all caps or starts with "IN THE")
+                        const isHeading = cleanLine === cleanLine.toUpperCase() && cleanLine.trim().length > 0 && cleanLine.trim().length < 100;
+                        const isCentered = cleanLine.includes('IN THE') || cleanLine.includes('BETWEEN') || cleanLine.includes('VERSUS') || cleanLine.includes('CIVIL SUIT') || cleanLine.includes('CASE NO');
+                        
+                        if (cleanLine.trim() === '') {
+                          return <div key={idx} className="h-4" />;
+                        }
+                        
+                        if (isHeading) {
+                          return (
+                            <div key={idx} className={`font-bold text-center text-lg ${isCentered ? 'my-4' : 'my-2'}`}>
+                              {cleanLine}
+                            </div>
+                          );
+                        }
+                        
+                        // Parse inline bold text for non-headings (text between **)
+                        const parts = line.split(/(\*\*.*?\*\*)/g);
+                        const renderedLine = parts.map((part, partIdx) => {
+                          if (part.startsWith('**') && part.endsWith('**')) {
+                            return <strong key={partIdx}>{part.slice(2, -2)}</strong>;
+                          }
+                          return <span key={partIdx}>{part}</span>;
+                        });
+                        
+                        return (
+                          <p key={idx} className={`${cleanLine.startsWith('    ') ? 'ml-12' : ''}`}>
+                            {renderedLine}
+                          </p>
+                        );
+                      })
+                    ) : (
+                      <div className="text-center text-gray-400 py-12">
+                        <FileText className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                        <p>No content available</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="p-6 border-t border-gray-200 flex gap-3 justify-end sticky bottom-0 bg-white">
-              <Button variant="outline">
-                <Edit className="w-4 h-4 mr-2" />
-                Edit Draft
-              </Button>
-              <Button>
-                <Download className="w-4 h-4 mr-2" />
-                Download PDF
-              </Button>
+
+            {/* Footer Actions */}
+            <div className="px-8 py-5 border-t border-gray-200 flex gap-3 justify-between items-center bg-gradient-to-r from-white to-gray-50 rounded-b-2xl">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <span className="px-3 py-1.5 bg-green-100 text-green-700 rounded-lg font-medium">
+                  {selectedDraft.status}
+                </span>
+                <span>•</span>
+                <span>By {selectedDraft.author}</span>
+              </div>
+              <div className="flex gap-3">
+                <Button variant="outline" className="gap-2">
+                  <Edit className="w-4 h-4" />
+                  Edit Draft
+                </Button>
+                <Button className="gap-2 bg-primary-600 hover:bg-primary-700">
+                  <Download className="w-4 h-4" />
+                  Download PDF
+                </Button>
+              </div>
             </div>
           </div>
         </div>

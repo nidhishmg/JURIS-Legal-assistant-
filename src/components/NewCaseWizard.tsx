@@ -840,36 +840,30 @@ export function NewCaseWizard({ onClose, onSuccess }: NewCaseWizardProps) {
         );
 
       case 8:
+        const availableTemplates = getAllTemplates();
         return (
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-4">
               <h3 className="text-gray-900 mb-4">Select Documents to Generate</h3>
+              <p className="text-sm text-gray-600 mb-4">Choose which legal documents to generate with AI</p>
               <div className="space-y-2">
-                {[
-                  { id: 'plaint', label: 'Plaint' },
-                  { id: 'complaint', label: 'Complaint' },
-                  { id: 'affidavit', label: 'Affidavit' },
-                  { id: 'vakalatnama', label: 'Vakalatnama' },
-                  { id: 'bail', label: 'Bail Application' },
-                  { id: 'statement-164', label: '164 Statement' },
-                  { id: 'petition', label: 'Petition' },
-                  { id: 'synopsis', label: 'Synopsis & List of Dates' },
-                  { id: 'annexure-index', label: 'Annexure Index' },
-                  { id: 'court-fee', label: 'Court Fee Calculation' }
-                ].map((draft) => (
-                  <div key={draft.id} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200">
+                {availableTemplates.map((template) => (
+                  <div key={template.id} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200 hover:border-primary-500 transition-colors">
                     <Checkbox
-                      checked={selectedDrafts.includes(draft.id)}
+                      checked={selectedDrafts.includes(template.id)}
                       onCheckedChange={(checked) => {
                         if (checked) {
-                          setSelectedDrafts([...selectedDrafts, draft.id]);
+                          setSelectedDrafts([...selectedDrafts, template.id]);
                         } else {
-                          setSelectedDrafts(selectedDrafts.filter(id => id !== draft.id));
+                          setSelectedDrafts(selectedDrafts.filter(id => id !== template.id));
                         }
                       }}
                     />
-                    <FileText className="w-4 h-4 text-gray-600" />
-                    <span className="text-gray-900">{draft.label}</span>
+                    <FileText className="w-4 h-4 text-primary-600" />
+                    <div className="flex-1">
+                      <div className="text-gray-900 font-medium">{template.title}</div>
+                      <div className="text-xs text-gray-500">{template.description}</div>
+                    </div>
                   </div>
                 ))}
               </div>

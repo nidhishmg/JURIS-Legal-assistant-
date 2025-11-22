@@ -22,6 +22,7 @@ import { CaseTheoryBuilder } from './components/CaseTheoryBuilder';
 import { TimelineBuilder } from './components/TimelineBuilder';
 import { AnnexureManager } from './components/AnnexureManager';
 import { AIMentor } from './components/AIMentor';
+import { CaseWorkspace } from './components/CaseWorkspace';
 
 export type Page = 
   | 'dashboard' 
@@ -43,19 +44,34 @@ export type Page =
   | 'annexure-manager'
   | 'exam-prep'
   | 'ai-mentor'
+  | 'case-workspace'
   | 'settings';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+  const [currentCaseId, setCurrentCaseId] = useState<string | undefined>();
+
+  const handleNavigate = (page: Page, caseId?: string) => {
+    setCurrentPage(page);
+    if (caseId) {
+      setCurrentCaseId(caseId);
+    }
+  };
 
   const renderPage = () => {
     switch (currentPage) {
       case 'dashboard':
-        return <Dashboard onNavigate={setCurrentPage} />;
+        return <Dashboard onNavigate={handleNavigate} />;
       case 'new-chat':
         return <NewChat />;
       case 'cases':
-        return <Cases />;
+        return <Cases onNavigate={handleNavigate} />;
+      case 'case-workspace':
+        return currentCaseId ? (
+          <CaseWorkspace caseId={currentCaseId} onClose={() => handleNavigate('cases')} />
+        ) : (
+          <Cases onNavigate={handleNavigate} />
+        );
       case 'drafts':
         return <Drafts />;
       case 'documents':
@@ -91,14 +107,14 @@ export default function App() {
       case 'settings':
         return <Settings />;
       default:
-        return <Dashboard onNavigate={setCurrentPage} />;
+        return <Dashboard onNavigate={handleNavigate} />;
     }
   };
 
   return (
     <ThemeProvider>
       <div className="flex h-screen bg-background">
-        <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
+        <Sidebar currentPage={currentPage} onNavigate={handleNavigate} />
         <div className="flex-1 flex flex-col overflow-hidden">
           <TopBar />
           <main className="flex-1 overflow-y-auto">
